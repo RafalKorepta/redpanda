@@ -1,5 +1,6 @@
 domain: vectorized.io
 layout: go.kubebuilder.io/v3-alpha
+multigroup: true
 projectName: redpanda-operator
 repo: github.com/vectorizedio/kubernetes-operator
 version: 3-alpha

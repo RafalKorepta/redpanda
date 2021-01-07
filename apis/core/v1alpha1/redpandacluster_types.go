@@ -14,14 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package v1alpha1 represent Custom Resource definition of the vectorized.io core group
 package v1alpha1
 
-import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // RedpandaClusterSpec defines the desired state of RedpandaCluster
 type RedpandaClusterSpec struct {

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package core is responsible for Reconcile the core.vectorized.io Custom Resource Definition
 package core
 
 import (
@@ -30,8 +31,8 @@ import (
 // RedpandaClusterReconciler reconciles a RedpandaCluster object
 type RedpandaClusterReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	Log	logr.Logger
+	Scheme	*runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=core.vectorized.io,resources=redpandaclusters,verbs=get;list;watch;create;update;patch;delete

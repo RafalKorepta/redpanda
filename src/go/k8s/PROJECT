@@ -8,4 +8,5 @@ resources:
   group: core
   kind: RedpandaCluster
   version: v1alpha1
+  webhookVersion: v1
 version: 3-alpha

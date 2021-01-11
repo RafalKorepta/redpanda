@@ -39,20 +39,20 @@ type RedpandaClusterStatus struct {
 
 // RedpandaCluster is the Schema for the redpandaclusters API
 type RedpandaCluster struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.TypeMeta		`json:",inline"`
+	metav1.ObjectMeta	`json:"metadata,omitempty"`
 
-	Spec   RedpandaClusterSpec   `json:"spec,omitempty"`
-	Status RedpandaClusterStatus `json:"status,omitempty"`
+	Spec	RedpandaClusterSpec	`json:"spec,omitempty"`
+	Status	RedpandaClusterStatus	`json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
 // RedpandaClusterList contains a list of RedpandaCluster
 type RedpandaClusterList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RedpandaCluster `json:"items"`
+	metav1.TypeMeta	`json:",inline"`
+	metav1.ListMeta	`json:"metadata,omitempty"`
+	Items		[]RedpandaCluster	`json:"items"`
 }
 
 func init() {

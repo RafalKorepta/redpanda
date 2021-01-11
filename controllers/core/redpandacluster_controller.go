@@ -48,7 +48,9 @@ type RedpandaClusterReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
-func (r *RedpandaClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *RedpandaClusterReconciler) Reconcile(
+	ctx context.Context, req ctrl.Request,
+) (ctrl.Result, error) {
 	_ = r.Log.WithValues("redpandacluster", req.NamespacedName)
 
 	// your logic here

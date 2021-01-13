@@ -29,20 +29,21 @@ git clone https://github.com/vectorizedio/kubernetes-operator.git
 Create local Kubernetes cluster using KIND
 
 ```
-kind create cluster -config kind.yaml
+export KUBECONFIG=your/path/to/kubeconfig.yaml
+kind create cluster --config kind.yaml
 ```
 
-Build and load the container to Kubernetes cluster
+You can simply deploy the latest version stored in GCR
 
 ```
-make docker-build
-make push-to-kind
+make deploy
 ```
 
-Then build the Kubernetes manifest and apply them to cluster
+Or you can build and load the container to Kubernetes cluster
 
 ```
-kustomize build config/default | kubectl apply -f -
+# Only if you want to build container from source!
+make docker-build deploy-to-kind
 ```
 
 Install sample RedpandaCluster custom resource

@@ -3,23 +3,18 @@ module github.com/vectorizedio/kubernetes-operator
 go 1.15
 
 require (
-	github.com/go-delve/delve v1.5.1 // indirect
 	github.com/go-logr/logr v0.3.0
-	github.com/mattn/go-colorable v0.1.8 // indirect
-	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
-	github.com/peterh/liner v1.2.1 // indirect
-	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/sirupsen/logrus v1.7.0 // indirect
-	github.com/spf13/cobra v1.1.1 // indirect
-	go.starlark.net v0.0.0-20201210151846-e81fc95f7bd5 // indirect
-	golang.org/x/arch v0.0.0-20210105144330-cfa462d59626 // indirect
+	github.com/vectorizedio/redpanda/src/go/rpk v0.0.0-20210112233058-e276be9715ce
 	golang.org/x/sys v0.0.0-20210105210732-16f7687f5001 // indirect
 	golang.org/x/tools v0.0.0-20210107193943-4ed967dd8eff // indirect
+	google.golang.org/protobuf v1.25.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 	k8s.io/api v0.19.2
 	k8s.io/apimachinery v0.19.2
 	k8s.io/client-go v0.19.2
+	k8s.io/utils v0.0.0-20200912215256-4140de9c8800
 	sigs.k8s.io/controller-runtime v0.7.0
 )

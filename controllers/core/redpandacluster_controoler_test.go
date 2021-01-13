@@ -1,0 +1,95 @@
+package core_test
+
+import (
+	"context"
+	"time"
+
+	appsv1 "k8s.io/api/apps/v1"
+
+	"github.com/vectorizedio/kubernetes-operator/apis/core/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+)
+
+var _ = Describe("RedPandaCluster controller", func() {
+
+	const (
+		timeout		= time.Second * 30
+		interval	= time.Second * 1
+
+		kafkaPort			= 9092
+		redpandaConfigurationFile	= "redpanda.yaml"
+		replicas			= 1
+		redpandaContainerTag		= "x"
+	)
+
+	Context("When creating RedpandaCluster", func() {
+		It("Should create Redpanda cluster", func() {
+
+			key := types.NamespacedName{
+				Name:		"redpanda-test",
+				Namespace:	"default",
+			}
+			seedKey := types.NamespacedName{
+				Namespace:	"default",
+				Name:		"redpanda-test-seed",
+			}
+			redpandaCluster := &v1alpha1.RedpandaCluster{
+				TypeMeta: metav1.TypeMeta{
+					Kind:		"RedpandaCluster",
+					APIVersion:	"core.vectorized.io/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:		key.Name,
+					Namespace:	key.Namespace,
+					Labels: map[string]string{
+						"app": "redpanda",
+					},
+				},
+				Spec: v1alpha1.RedpandaClusterSpec{
+					Version:	redpandaContainerTag,
+					Replicas:	pointer.Int32Ptr(replicas),
+					Configuration: v1alpha1.RedpandaConfig{
+						KafkaAPI: v1alpha1.SocketAddress{Port: kafkaPort},
+					},
+				},
+			}
+			Expect(k8sClient.Create(context.Background(), redpandaCluster)).Should(Succeed())
+
+			By("Creating headless Service")
+			var svc corev1.Service
+			Eventually(func() bool {
+				err := k8sClient.Get(context.Background(), key, &svc)
+				return err == nil &&
+					svc.Spec.ClusterIP == corev1.ClusterIPNone &&
+					svc.Spec.Ports[0].Port == kafkaPort
+			}, timeout, interval).Should(BeTrue())
+
+			By("Creating Configmap with the redpanda configuration")
+			var cm corev1.ConfigMap
+			Eventually(func() bool {
+				err := k8sClient.Get(context.Background(), seedKey, &cm)
+				if err != nil {
+					return false
+				}
+				_, exist := cm.Data[redpandaConfigurationFile]
+				return exist
+			}, timeout, interval).Should(BeTrue())
+
+			By("Creating StatefulSet")
+			var sts appsv1.StatefulSet
+			Eventually(func() bool {
+				err := k8sClient.Get(context.Background(), seedKey, &sts)
+				return err == nil &&
+					*sts.Spec.Replicas == replicas &&
+					sts.Spec.Template.Spec.Containers[0].Image == "vectorized/redpanda:"+redpandaContainerTag
+			}, timeout, interval).Should(BeTrue())
+		})
+	})
+
+})

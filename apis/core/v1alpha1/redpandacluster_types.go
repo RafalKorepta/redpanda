@@ -11,6 +11,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -23,6 +24,10 @@ type RedpandaClusterSpec struct {
 	// Replicas determine how big the cluster will be.
 	// +kubebuilder:validation:Minimum=0
 	Replicas	*int32	`json:"replicas,omitempty"`
+	// Resources 1 Redpanda container will use.
+	// To calculate overall resource consumption one need to
+	// multiply replicas against limits
+	Resources	corev1.ResourceRequirements	`json:"resources"`
 	// Configuration represent redpanda specific configuration
 	Configuration	RedpandaConfig	`json:"configuration,omitempty"`
 }

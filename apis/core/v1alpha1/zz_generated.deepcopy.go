@@ -84,6 +84,7 @@ func (in *RedpandaClusterSpec) DeepCopyInto(out *RedpandaClusterSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	in.Resources.DeepCopyInto(&out.Resources)
 	out.Configuration = in.Configuration
 }
 

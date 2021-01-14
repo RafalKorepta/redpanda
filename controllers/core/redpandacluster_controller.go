@@ -13,6 +13,7 @@ package core
 import (
 	"context"
 	"reflect"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -289,6 +290,11 @@ func copyConfig(
 func (r *RedpandaClusterReconciler) createBootstrapStatefulSet(
 	ctx context.Context, cluster *corev1alpha1.RedpandaCluster,
 ) error {
+	memory, exist := cluster.Spec.Resources.Limits["memory"]
+	if !exist {
+		memory = resource.MustParse("2Gi")
+	}
+
 	return r.Create(ctx, &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:	cluster.Namespace,
@@ -327,7 +333,12 @@ func (r *RedpandaClusterReconciler) createBootstrapStatefulSet(
 							Name:	"redpanda",
 							Image:	"vectorized/redpanda:" + cluster.Spec.Version,
 							Args: []string{
-								"--check=false --smp 1 --memory 2G start -- --default-log-level=info --reserve-memory 0M",
+								"--check=false",
+								"--smp 1",
+								"--memory " + strings.ReplaceAll(memory.String(), "Gi", "G"),
+								"start --",
+								"--default-log-level=info",
+								"--reserve-memory 0M",
 							},
 							Ports: []corev1.ContainerPort{
 								{
@@ -344,8 +355,8 @@ func (r *RedpandaClusterReconciler) createBootstrapStatefulSet(
 								},
 							},
 							Resources: corev1.ResourceRequirements{
-								Limits:		nil,
-								Requests:	nil,
+								Limits:		cluster.Spec.Resources.Limits,
+								Requests:	cluster.Spec.Resources.Requests,
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{

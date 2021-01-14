@@ -8,6 +8,13 @@ metadata:
 spec:
   version: "latest"
   replicas: 1
+  resources:
+    requests:
+      cpu: 1
+      memory: 2Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
   configuration:
     rpcServer:
       port: 33145

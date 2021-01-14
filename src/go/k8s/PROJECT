@@ -1,0 +1,12 @@
+domain: vectorized.io
+layout: go.kubebuilder.io/v3-alpha
+multigroup: true
+projectName: redpanda-operator
+repo: github.com/vectorizedio/kubernetes-operator
+resources:
+- crdVersion: v1
+  group: core
+  kind: RedpandaCluster
+  version: v1alpha1
+  webhookVersion: v1
+version: 3-alpha

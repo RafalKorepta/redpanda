@@ -7,7 +7,7 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0
 
-package core
+package core_test
 
 import (
 	"path/filepath"
@@ -17,7 +17,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1alpha1 "github.com/vectorizedio/kubernetes-operator/apis/core/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
@@ -28,7 +27,7 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-var cfg *rest.Config
+// var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
 

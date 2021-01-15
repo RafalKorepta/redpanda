@@ -7,6 +7,7 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0
 
+// Package core is responsible for Reconcile the core.vectorized.io Custom Resource Definition
 package core
 
 import (

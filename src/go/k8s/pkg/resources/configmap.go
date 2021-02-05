@@ -91,7 +91,7 @@ func (r *ConfigMapResource) Obj() (k8sclient.Object, error) {
 	cfg := config.Default()
 	cfg.Redpanda = copyConfig(&r.pandaCluster.Spec.Configuration, &cfg.Redpanda)
 	cfg.Redpanda.Id = 0
-	cfg.Redpanda.AdvertisedKafkaApi.Port = cfg.Redpanda.KafkaApi.Port
+	cfg.Redpanda.AdvertisedKafkaApi[0].Port = cfg.Redpanda.KafkaApi[0].Port
 	cfg.Redpanda.AdvertisedRPCAPI.Port = cfg.Redpanda.RPCServer.Port
 	cfg.Redpanda.Directory = dataDirectory
 	cfg.Redpanda.SeedServers = []config.SeedServer{
@@ -122,7 +122,7 @@ func (r *ConfigMapResource) Obj() (k8sclient.Object, error) {
 		rpk --config $CONFIG config set redpanda.advertised_rpc_api.address $SERVICE_NAME;
 		rpk --config $CONFIG config set redpanda.advertised_rpc_api.port ` + strconv.Itoa(cfg.Redpanda.AdvertisedRPCAPI.Port) + `;
 		rpk --config $CONFIG config set redpanda.advertised_kafka_api.address $SERVICE_NAME;
-		rpk --config $CONFIG config set redpanda.advertised_kafka_api.port ` + strconv.Itoa(cfg.Redpanda.AdvertisedKafkaApi.Port) + `;
+		rpk --config $CONFIG config set redpanda.advertised_kafka_api.port ` + strconv.Itoa(cfg.Redpanda.AdvertisedKafkaApi[0].Port) + `;
 		cat $CONFIG`
 
 	cm := &corev1.ConfigMap{
@@ -154,8 +154,8 @@ func copyConfig(
 	}
 
 	kafkaAPIPort := c.KafkaAPI.Port
-	if c.KafkaAPI.Port == 0 {
-		kafkaAPIPort = cfgDefaults.KafkaApi.Port
+	if c.KafkaAPI.Port == 0 && len(cfgDefaults.KafkaApi) > 0 {
+		kafkaAPIPort = cfgDefaults.KafkaApi[0].Port
 	}
 
 	AdminAPIPort := c.AdminAPI.Port
@@ -169,11 +169,19 @@ func copyConfig(
 			Port:		rpcServerPort,
 		},
 		AdvertisedRPCAPI:	&config.SocketAddress{},
-		KafkaApi: config.SocketAddress{
-			Address:	"0.0.0.0",
-			Port:		kafkaAPIPort,
+		KafkaApi: []config.NamedSocketAddress{
+			{
+				SocketAddress: config.SocketAddress{
+					Address:	"0.0.0.0",
+					Port:		kafkaAPIPort,
+				},
+			},
 		},
-		AdvertisedKafkaApi:	&config.SocketAddress{},
+		AdvertisedKafkaApi: []config.NamedSocketAddress{
+			{
+				SocketAddress: config.SocketAddress{},
+			},
+		},
 		AdminApi: config.SocketAddress{
 			Address:	"0.0.0.0",
 			Port:		AdminAPIPort,

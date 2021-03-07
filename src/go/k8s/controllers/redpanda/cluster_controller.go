@@ -14,21 +14,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/go-logr/logr"
 	redpandav1alpha1 "github.com/vectorizedio/redpanda/src/go/k8s/apis/redpanda/v1alpha1"
-	"github.com/vectorizedio/redpanda/src/go/k8s/pkg/labels"
 	"github.com/vectorizedio/redpanda/src/go/k8s/pkg/resources"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-var (
-	errNonexistentLastObservesState = errors.New("expecting to have statefulset LastObservedState set but it's nil")
 )
 
 // ClusterReconciler reconciles a Cluster object
@@ -45,6 +39,10 @@ type ClusterReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;
+//+kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=get;list;watch;create;update;patch;
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=get;list;watch;create;update;patch;
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings,verbs=get;list;watch;create;update;patch;
+//+kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -71,13 +69,35 @@ func (r *ClusterReconciler) Reconcile(
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	svc := resources.NewHeadlessService(r.Client, &redpandaCluster, r.Scheme, log)
-	sts := resources.NewStatefulSet(r.Client, &redpandaCluster, r.Scheme, svc.HeadlessServiceFQDN(), svc.Key().Name, log)
+	headlessSvc := resources.NewHeadlessService(r.Client, &redpandaCluster, r.Scheme, log)
+	nodePortSvc := resources.NewNodePortService(r.Client, &redpandaCluster, r.Scheme, log)
+	sts := resources.NewStatefulSet(
+		r.Client,
+		&redpandaCluster,
+		r.Scheme,
+		headlessSvc.HeadlessServiceFQDN(),
+		headlessSvc.Key().Name,
+		nodePortSvc.Key(),
+		log,
+	)
+	cluster := resources.NewClusterResource(
+		r.Client,
+		&redpandaCluster,
+		r.Scheme,
+		headlessSvc.HeadlessServiceFQDN(),
+		nodePortSvc.Key(),
+		sts.Key(),
+		log,
+	)
 	toApply := []resources.Resource{
-		svc,
-		resources.NewNodePortService(r.Client, &redpandaCluster, r.Scheme, log),
-		resources.NewConfigMap(r.Client, &redpandaCluster, r.Scheme, log),
+		headlessSvc,
+		nodePortSvc,
+		resources.NewConfigMap(r.Client, &redpandaCluster, r.Scheme, headlessSvc.HeadlessServiceFQDN(), log),
+		resources.NewServiceAccount(r.Client, &redpandaCluster, r.Scheme, log),
+		resources.NewClusterRole(r.Client, &redpandaCluster, r.Scheme, log),
+		resources.NewClusterRoleBinding(r.Client, &redpandaCluster, r.Scheme, log),
 		sts,
+		cluster,
 	}
 
 	for _, res := range toApply {
@@ -91,46 +111,6 @@ func (r *ClusterReconciler) Reconcile(
 
 		if err != nil {
 			log.Error(err, "Failed to reconcile resource")
-		}
-	}
-
-	var observedPods corev1.PodList
-
-	err := r.List(ctx, &observedPods, &client.ListOptions{
-		LabelSelector: labels.ForCluster(&redpandaCluster).AsClientSelector(),
-		Namespace:     redpandaCluster.Namespace,
-	})
-	if err != nil {
-		log.Error(err, "Unable to fetch PodList resource")
-
-		return ctrl.Result{}, err
-	}
-
-	observedNodes := make([]string, 0, len(observedPods.Items))
-	// nolint:gocritic // the copies are necessary for further redpandacluster updates
-	for _, item := range observedPods.Items {
-		observedNodes = append(observedNodes, fmt.Sprintf("%s.%s", item.Name, svc.HeadlessServiceFQDN()))
-	}
-
-	if !reflect.DeepEqual(observedNodes, redpandaCluster.Status.Nodes) {
-		redpandaCluster.Status.Nodes = observedNodes
-		if err := r.Status().Update(ctx, &redpandaCluster); err != nil {
-			log.Error(err, "Failed to update RedpandaClusterStatus")
-
-			return ctrl.Result{}, err
-		}
-	}
-
-	if sts.LastObservedState == nil {
-		return ctrl.Result{}, errNonexistentLastObservesState
-	}
-
-	if sts.LastObservedState != nil && !reflect.DeepEqual(sts.LastObservedState.Status.ReadyReplicas, redpandaCluster.Status.Replicas) {
-		redpandaCluster.Status.Replicas = sts.LastObservedState.Status.ReadyReplicas
-		if err := r.Status().Update(ctx, &redpandaCluster); err != nil {
-			log.Error(err, "Failed to update RedpandaClusterStatus")
-
-			return ctrl.Result{}, err
 		}
 	}
 

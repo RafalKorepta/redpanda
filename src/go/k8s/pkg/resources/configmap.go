@@ -11,7 +11,6 @@ package resources
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-logr/logr"
 	redpandav1alpha1 "github.com/vectorizedio/redpanda/src/go/k8s/apis/redpanda/v1alpha1"
@@ -19,7 +18,6 @@ import (
 	"github.com/vectorizedio/redpanda/src/go/rpk/pkg/config"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -41,7 +39,8 @@ type ConfigMapResource struct {
 	scheme       *runtime.Scheme
 	pandaCluster *redpandav1alpha1.Cluster
 
-	logger logr.Logger
+	serviceFQDN string
+	logger      logr.Logger
 }
 
 // NewConfigMap creates ConfigMapResource
@@ -49,34 +48,22 @@ func NewConfigMap(
 	client k8sclient.Client,
 	pandaCluster *redpandav1alpha1.Cluster,
 	scheme *runtime.Scheme,
+	serviceFQDN string,
 	logger logr.Logger,
 ) *ConfigMapResource {
 	return &ConfigMapResource{
-		client, scheme, pandaCluster, logger.WithValues("Kind", configMapKind()),
+		client,
+		scheme,
+		pandaCluster,
+		serviceFQDN,
+		logger.WithValues("Kind", configMapKind()),
 	}
 }
 
 // Ensure will manage kubernetes v1.ConfigMap for redpanda.vectorized.io CR
 func (r *ConfigMapResource) Ensure(ctx context.Context) error {
-	var cfgm corev1.ConfigMap
-
-	err := r.Get(ctx, r.Key(), &cfgm)
-	if err != nil && !errors.IsNotFound(err) {
-		return err
-	}
-
-	if errors.IsNotFound(err) {
-		r.logger.Info(fmt.Sprintf("ConfigMap %s does not exist, going to create one", r.Key().Name))
-
-		obj, err := r.Obj()
-		if err != nil {
-			return err
-		}
-
-		return r.Create(ctx, obj)
-	}
-
-	return nil
+	_, err := ensure(ctx, r, &corev1.ConfigMap{}, "ConfigMap", r.logger)
+	return err
 }
 
 // Obj returns resource managed client.Object
@@ -130,6 +117,16 @@ func (r *ConfigMapResource) createConfiguration() *config.Config {
 	cr.AdminApi.Port = clusterCRPortOrRPKDefault(c.AdminAPI.Port, cr.AdminApi.Port)
 	cr.DeveloperMode = c.DeveloperMode
 	cr.Directory = dataDirectory
+
+	cr.SeedServers = []config.SeedServer{
+		{
+			Host: config.SocketAddress{
+				// Example address: cluster-sample-0.cluster-sample.default.svc.cluster.local
+				Address: r.pandaCluster.Name + "-0." + r.serviceFQDN,
+				Port:    clusterCRPortOrRPKDefault(c.RPCServer.Port, cr.RPCServer.Port),
+			},
+		},
+	}
 
 	return cfgRpk
 }

@@ -1,7 +1,7 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= vectorized/redpanda-operator:latest
-CONFIGURATOR_IMG ?= vectorized/configurator:latest
+IMG ?= gcr.io/vectorized/redpanda-operator:ext-con
+CONFIGURATOR_IMG ?= gcr.io/vectorized/configurator:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 

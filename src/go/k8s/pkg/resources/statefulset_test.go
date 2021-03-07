@@ -21,6 +21,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -72,7 +73,14 @@ func TestEnsure(t *testing.T) {
 			assert.NoError(t, err, tt.name)
 		}
 
-		sts := res.NewStatefulSet(c, tt.pandaCluster, scheme.Scheme, "cluster.local", "servicename", ctrl.Log.WithName("test"))
+		sts := res.NewStatefulSet(
+			c,
+			tt.pandaCluster,
+			scheme.Scheme,
+			"cluster.local",
+			"servicename",
+			types.NamespacedName{Name: "test", Namespace: "test"},
+			ctrl.Log.WithName("test"))
 
 		err = sts.Ensure(context.Background())
 		assert.NoError(t, err, tt.name)
@@ -126,10 +134,6 @@ func pandaCluster() *redpandav1alpha1.Cluster {
 	}
 
 	return &redpandav1alpha1.Cluster{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "RedpandaCluster",
-			APIVersion: "core.vectorized.io/v1alpha1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "cluster",
 			Namespace: "default",

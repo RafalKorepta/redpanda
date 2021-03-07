@@ -25,7 +25,7 @@ import (
 
 const requeueDuration = time.Second * 10
 
-// updateStsImage handles image changes in the redpanda cluster CR by triggering
+// updateStsImage handles image changes in the Redpanda cluster CR by triggering
 // a rolling update (using partitions) against the statefulset underneath the CR.
 // The partitioned rolling update allows us to verify the ith pod in a custom manner
 // before proceeding to the next pod.

@@ -7,18 +7,15 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0
 
-// Package resources contains reconciliation logic for redpanda.vectorized.io CRD
 package resources
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-logr/logr"
 	redpandav1alpha1 "github.com/vectorizedio/redpanda/src/go/k8s/apis/redpanda/v1alpha1"
 	"github.com/vectorizedio/redpanda/src/go/k8s/pkg/labels"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -55,29 +52,8 @@ func NewNodePortService(
 
 // Ensure will manage kubernetes v1.Service for redpanda.vectorized.io custom resource
 func (r *NodePortServiceResource) Ensure(ctx context.Context) error {
-	var svc corev1.Service
-
-	err := r.Get(ctx, r.Key(), &svc)
-	if err != nil && !errors.IsNotFound(err) {
-		return fmt.Errorf("error while fetching service resource: %w", err)
-	}
-
-	if errors.IsNotFound(err) {
-		r.logger.Info(fmt.Sprintf("Service %s does not exist, going to create one", r.Key().Name))
-
-		obj, err := r.Obj()
-		if err != nil {
-			return fmt.Errorf("unable to construct service object: %w", err)
-		}
-
-		if err := r.Create(ctx, obj); err != nil {
-			return fmt.Errorf("unable to create service resource: %w", err)
-		}
-
-		return nil
-	}
-
-	return nil
+	_, err := ensure(ctx, r, &corev1.Service{}, "Service", r.logger)
+	return err
 }
 
 // Obj returns resource managed client.Object
@@ -106,8 +82,8 @@ func (r *NodePortServiceResource) Obj() (k8sclient.Object, error) {
 				{
 					Name:       "kafka-tcp",
 					Protocol:   corev1.ProtocolTCP,
-					Port:       int32(r.pandaCluster.Spec.Configuration.KafkaAPI.Port),
-					TargetPort: intstr.FromInt(r.pandaCluster.Spec.Configuration.KafkaAPI.Port),
+					Port:       int32(r.pandaCluster.Spec.Configuration.KafkaAPI.Port + 1),
+					TargetPort: intstr.FromInt(r.pandaCluster.Spec.Configuration.KafkaAPI.Port + 1),
 				},
 			},
 			// The selector is purposely set to nil. Our external connectivity doesn't use

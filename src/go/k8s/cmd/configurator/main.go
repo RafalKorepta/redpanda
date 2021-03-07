@@ -12,6 +12,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -25,33 +26,69 @@ import (
 	"github.com/spf13/afero"
 	"github.com/vectorizedio/redpanda/src/go/rpk/pkg/config"
 	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 const (
-	hostNameEnvVar          = "HOSTNAME"
-	svcFQDNEnvVar           = "SERVICE_FQDN"
-	configSourceDirEnvVar   = "CONFIG_SOURCE_DIR"
-	configDestinationEnvVar = "CONFIG_DESTINATION"
-	redpandaRPCPortEnvVar   = "REDPANDA_RPC_PORT"
+	hostNameEnvVar             = "HOSTNAME"
+	svcFQDNEnvVar              = "SERVICE_FQDN"
+	configSourceDirEnvVar      = "CONFIG_SOURCE_DIR"
+	configDestinationEnvVar    = "CONFIG_DESTINATION"
+	redpandaRPCPortEnvVar      = "REDPANDA_RPC_PORT"
+	kafkaAPIEnvVar             = "KAFKA_API_PORT"
+	nodeNameEnvVar             = "NODE_NAME"
+	externalConnectivityEnvVar = "EXTERNAL_CONNECTIVITY"
+	hostPortEnvVar             = "HOST_PORT"
 )
 
 type configuratorConfig struct {
-	hostName          string
-	svcFQDN           string
-	configSourceDir   string
-	configDestination string
-	redpandaRPCPort   int
+	hostName             string
+	svcFQDN              string
+	configSourceDir      string
+	configDestination    string
+	nodeName             string
+	externalConnectivity bool
+	kafkaAPIPort         int
+	redpandaRPCPort      int
+	hostPort             int
+}
+
+func (c *configuratorConfig) String() string {
+	return fmt.Sprintf("The configuration:\n"+
+		"hostName: %s\n"+
+		"svcFQDN: %s\n"+
+		"configSourceDir: %s\n"+
+		"configDestination: %s\n"+
+		"nodeName: %s\n"+
+		"externalConnectivity: %t\n"+
+		"kafkaAPIPort: %d\n"+
+		"redpandaRPCPort: %d\n"+
+		"hostPort: %d\n",
+		c.hostName,
+		c.svcFQDN,
+		c.configSourceDir,
+		c.configDestination,
+		c.nodeName,
+		c.externalConnectivity,
+		c.kafkaAPIPort,
+		c.redpandaRPCPort,
+		c.hostPort)
 }
 
 var errorMissingEnvironmentVariable = errors.New("missing environment variable")
 
 func main() {
-	log.Printf("The redpanda configurator is starting")
+	log.Print("The redpanda configurator is starting")
 
 	c, err := checkEnvVars()
 	if err != nil {
 		log.Fatalf("%s", fmt.Errorf("unable to get the environment variables: %w", err))
 	}
+
+	log.Print(c.String())
 
 	fs := afero.NewOsFs()
 	v := config.InitViper(fs)
@@ -89,22 +126,19 @@ func main() {
 
 	log.Printf("Host index calculated %d", hostIndex)
 
+	err = registerAdvertisedKafkaAPI(&c, cfg)
+	if err != nil {
+		log.Fatalf("%s", fmt.Errorf("unable to register advertised kafka API: %w", err))
+	}
+
+	registerKafkaAPI(&c, cfg)
+
 	cfg.Redpanda.Id = hostIndex
 
 	// First Redpanda node need to have cleared seed servers in order
 	// to form raft group 0
 	if hostIndex == 0 {
 		cfg.Redpanda.SeedServers = []config.SeedServer{}
-	} else {
-		cfg.Redpanda.SeedServers = []config.SeedServer{
-			{
-				Host: config.SocketAddress{
-					// Example address: cluster-sample-0.cluster-sample.default.svc.cluster.local
-					Address: c.hostName + c.svcFQDN,
-					Port:    c.redpandaRPCPort,
-				},
-			},
-		}
 	}
 
 	cfgBytes, err := yaml.Marshal(cfg)
@@ -121,52 +155,167 @@ func main() {
 	log.Printf("Configuration saved to: %s", c.configDestination)
 }
 
+func registerKafkaAPI(c *configuratorConfig, cfg *config.Config) {
+	cfg.Redpanda.KafkaApi = []config.NamedSocketAddress{
+		{
+			SocketAddress: config.SocketAddress{
+				Address: "0.0.0.0",
+				Port:    c.kafkaAPIPort,
+			},
+			Name: "Internal",
+		},
+	}
+
+	if !c.externalConnectivity {
+		return
+	}
+
+	cfg.Redpanda.KafkaApi = append(cfg.Redpanda.KafkaApi, config.NamedSocketAddress{
+		SocketAddress: config.SocketAddress{
+			Address: "0.0.0.0",
+			Port:    c.kafkaAPIPort + 1,
+		},
+		Name: "External",
+	})
+}
+
+func registerAdvertisedKafkaAPI(
+	c *configuratorConfig, cfg *config.Config,
+) error {
+	cfg.Redpanda.AdvertisedKafkaApi = []config.NamedSocketAddress{
+		{
+			SocketAddress: config.SocketAddress{
+				Address: c.hostName + "." + c.svcFQDN,
+				Port:    c.kafkaAPIPort,
+			},
+			Name: "Internal",
+		},
+	}
+
+	if !c.externalConnectivity {
+		return nil
+	}
+
+	k8sconfig, err := rest.InClusterConfig()
+	if err != nil {
+		return fmt.Errorf("unable to create in cluster config: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(k8sconfig)
+	if err != nil {
+		return fmt.Errorf("unable to create clientset: %w", err)
+	}
+
+	node, err := clientset.CoreV1().Nodes().Get(context.Background(), c.nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("unable to retrieve node: %w", err)
+	}
+
+	cfg.Redpanda.AdvertisedKafkaApi = append(cfg.Redpanda.AdvertisedKafkaApi, config.NamedSocketAddress{
+		SocketAddress: config.SocketAddress{
+			Address: getExternalIP(node),
+			Port:    c.hostPort,
+		},
+		Name: "External",
+	})
+	return nil
+}
+
+func getExternalIP(node *corev1.Node) string {
+	if node == nil {
+		return ""
+	}
+	for _, address := range node.Status.Addresses {
+		if address.Type == corev1.NodeExternalIP {
+			return address.Address
+		}
+	}
+	return ""
+}
+
 func checkEnvVars() (configuratorConfig, error) {
-	var exist bool
 	var result error
+	var extCon string
+	var rpcPort string
+	var kafkaAPIPort string
+	var hostPort string
+
 	c := configuratorConfig{}
-	c.hostName, exist = os.LookupEnv(hostNameEnvVar)
-	if !exist {
-		result = multierror.Append(result, fmt.Errorf("HOSTNAME %w", errorMissingEnvironmentVariable))
+
+	envVarList := []struct {
+		value *string
+		name  string
+	}{
+		{
+			value: &c.hostName,
+			name:  hostNameEnvVar,
+		},
+		{
+			value: &c.svcFQDN,
+			name:  svcFQDNEnvVar,
+		},
+		{
+			value: &c.configSourceDir,
+			name:  configSourceDirEnvVar,
+		},
+		{
+			value: &c.configDestination,
+			name:  configDestinationEnvVar,
+		},
+		{
+			value: &c.nodeName,
+			name:  nodeNameEnvVar,
+		},
+		{
+			value: &extCon,
+			name:  externalConnectivityEnvVar,
+		},
+		{
+			value: &rpcPort,
+			name:  redpandaRPCPortEnvVar,
+		},
+		{
+			value: &kafkaAPIPort,
+			name:  kafkaAPIEnvVar,
+		},
+		{
+			value: &hostPort,
+			name:  hostPortEnvVar,
+		},
+	}
+	for _, envVar := range envVarList {
+		v, exist := os.LookupEnv(envVar.name)
+		if !exist {
+			result = multierror.Append(result, fmt.Errorf("%s %w", envVar.name, errorMissingEnvironmentVariable))
+		}
+		*envVar.value = v
 	}
 
-	c.svcFQDN, exist = os.LookupEnv(svcFQDNEnvVar)
+	extCon, exist := os.LookupEnv(externalConnectivityEnvVar)
 	if !exist {
-		result = multierror.Append(result, fmt.Errorf("SERVICE_FQDN %w", errorMissingEnvironmentVariable))
-	}
-
-	c.configSourceDir, exist = os.LookupEnv(configSourceDirEnvVar)
-	if !exist {
-		result = multierror.Append(result, fmt.Errorf("CONFIG_SOURCE_DIR %w", errorMissingEnvironmentVariable))
-	}
-
-	c.configDestination, exist = os.LookupEnv(configDestinationEnvVar)
-	if !exist {
-		result = multierror.Append(result, fmt.Errorf("CONFIG_DESTINATION %w", errorMissingEnvironmentVariable))
-	}
-
-	rpcPort, exist := os.LookupEnv(redpandaRPCPortEnvVar)
-	if !exist {
-		result = multierror.Append(result, fmt.Errorf("REDPANDA_RPC_PORT %w", errorMissingEnvironmentVariable))
+		result = multierror.Append(result, fmt.Errorf("%s %w", externalConnectivityEnvVar, errorMissingEnvironmentVariable))
 	}
 
 	var err error
+	c.externalConnectivity, err = strconv.ParseBool(extCon)
+	if err != nil {
+		result = multierror.Append(result, fmt.Errorf("unable to parse bool: %w", err))
+	}
+
 	c.redpandaRPCPort, err = strconv.Atoi(rpcPort)
 	if err != nil {
 		result = multierror.Append(result, fmt.Errorf("unable to convert rpc port from string to int: %w", err))
 	}
 
-	log.Printf("The configuration:\n"+
-		"hostName: %s\n"+
-		"svcFQDN: %s\n"+
-		"configSourceDir: %s\n"+
-		"configDestination: %s\n"+
-		"redpandaRPCPort: %d\n",
-		c.hostName,
-		c.svcFQDN,
-		c.configSourceDir,
-		c.configDestination,
-		c.redpandaRPCPort)
+	c.kafkaAPIPort, err = strconv.Atoi(kafkaAPIPort)
+	if err != nil {
+		result = multierror.Append(result, fmt.Errorf("unable to convert kafka api port from string to int: %w", err))
+	}
+
+	c.hostPort, err = strconv.Atoi(hostPort)
+	if err != nil {
+		result = multierror.Append(result, fmt.Errorf("unable to convert rpc port from string to int: %w", err))
+	}
 
 	return c, result
 }

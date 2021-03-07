@@ -21,7 +21,6 @@ import (
 	"github.com/vectorizedio/redpanda/src/go/k8s/pkg/labels"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,9 +54,9 @@ type StatefulSetResource struct {
 	pandaCluster *redpandav1alpha1.Cluster
 	serviceFQDN  string
 	serviceName  string
+	nodePortName types.NamespacedName
+	nodePortSvc  corev1.Service
 	logger       logr.Logger
-
-	LastObservedState *appsv1.StatefulSet
 }
 
 // NewStatefulSet creates StatefulSetResource
@@ -67,10 +66,18 @@ func NewStatefulSet(
 	scheme *runtime.Scheme,
 	serviceFQDN string,
 	serviceName string,
+	nodePortName types.NamespacedName,
 	logger logr.Logger,
 ) *StatefulSetResource {
 	return &StatefulSetResource{
-		client, scheme, pandaCluster, serviceFQDN, serviceName, logger.WithValues("Kind", statefulSetKind()), nil,
+		client,
+		scheme,
+		pandaCluster,
+		serviceFQDN,
+		serviceName,
+		nodePortName,
+		corev1.Service{},
+		logger.WithValues("Kind", statefulSetKind()),
 	}
 }
 
@@ -78,36 +85,31 @@ func NewStatefulSet(
 func (r *StatefulSetResource) Ensure(ctx context.Context) error {
 	var sts appsv1.StatefulSet
 
-	err := r.Get(ctx, r.Key(), &sts)
-	if err != nil && !errors.IsNotFound(err) {
-		return err
-	}
-
-	if errors.IsNotFound(err) {
-		r.logger.Info(fmt.Sprintf("StatefulSet %s does not exist, going to create one", r.Key().Name))
-
-		obj, err := r.Obj()
+	if r.pandaCluster.Spec.ExternalConnectivity {
+		err := r.Get(ctx, r.nodePortName, &r.nodePortSvc)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to retrieve node port service %s: %w", r.nodePortName, err)
 		}
 
-		err = r.Create(ctx, obj)
-		r.LastObservedState = obj.(*appsv1.StatefulSet)
-
-		return err
+		if len(r.nodePortSvc.Spec.Ports) != 1 || r.nodePortSvc.Spec.Ports[0].NodePort == 0 {
+			return fmt.Errorf("node port service %s: %w", r.nodePortName, errNodePortMissing)
+		}
 	}
 
-	r.LastObservedState = &sts
+	created, err := ensure(ctx, r, &sts, "StatefulSet", r.logger)
+	if created || err != nil {
+		return err
+	}
 
 	updated := update(&sts, r.pandaCluster, r.logger)
 	if updated {
 		if err := r.Update(ctx, &sts); err != nil {
-			return fmt.Errorf("failed to update StatefulSet: %w", err)
+			return fmt.Errorf("failed to update StatefulSet replicas or resources: %w", err)
 		}
 	}
 
 	if err := r.updateStsImage(ctx, &sts); err != nil {
-		return err
+		return fmt.Errorf("failed to update StatefulSet image: %w", err)
 	}
 
 	return nil
@@ -159,6 +161,11 @@ func (r *StatefulSetResource) Obj() (k8sclient.Object, error) {
 
 	var clusterLabels = labels.ForCluster(r.pandaCluster)
 
+	nodePort := ""
+	if r.pandaCluster.Spec.ExternalConnectivity {
+		nodePort = strconv.FormatInt(int64(r.nodePortSvc.Spec.Ports[0].NodePort), 10)
+	}
+
 	ss := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: r.Key().Namespace,
@@ -180,6 +187,7 @@ func (r *StatefulSetResource) Obj() (k8sclient.Object, error) {
 					Labels:    clusterLabels.AsAPISelector().MatchLabels,
 				},
 				Spec: corev1.PodSpec{
+					ServiceAccountName: (&ServiceAccountResource{pandaCluster: r.pandaCluster}).Key().Name,
 					SecurityContext: &corev1.PodSecurityContext{
 						FSGroup: pointer.Int64Ptr(fsGroup),
 					},
@@ -214,7 +222,7 @@ func (r *StatefulSetResource) Obj() (k8sclient.Object, error) {
 						{
 							Name:            configuratorContainerName,
 							Image:           configuratorContainerImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
+							ImagePullPolicy: corev1.PullAlways,
 							Env: []corev1.EnvVar{
 								{
 									Name:  "SERVICE_FQDN",
@@ -231,6 +239,27 @@ func (r *StatefulSetResource) Obj() (k8sclient.Object, error) {
 								{
 									Name:  "REDPANDA_RPC_PORT",
 									Value: strconv.Itoa(r.pandaCluster.Spec.Configuration.RPCServer.Port),
+								},
+								{
+									Name:  "KAFKA_API_PORT",
+									Value: strconv.Itoa(r.pandaCluster.Spec.Configuration.KafkaAPI.Port),
+								},
+								{
+									Name: "NODE_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											APIVersion: "v1",
+											FieldPath:  "spec.nodeName",
+										},
+									},
+								},
+								{
+									Name:  "EXTERNAL_CONNECTIVITY",
+									Value: strconv.FormatBool(r.pandaCluster.Spec.ExternalConnectivity),
+								},
+								{
+									Name:  "HOST_PORT",
+									Value: nodePort,
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
@@ -297,20 +326,16 @@ func (r *StatefulSetResource) Obj() (k8sclient.Object, error) {
 									},
 								},
 							},
-							Ports: []corev1.ContainerPort{
+							Ports: append([]corev1.ContainerPort{
 								{
 									Name:          "admin",
 									ContainerPort: int32(r.pandaCluster.Spec.Configuration.AdminAPI.Port),
 								},
 								{
-									Name:          "kafka",
-									ContainerPort: int32(r.pandaCluster.Spec.Configuration.KafkaAPI.Port),
-								},
-								{
 									Name:          "rpc",
 									ContainerPort: int32(r.pandaCluster.Spec.Configuration.RPCServer.Port),
 								},
-							},
+							}, r.getPorts()...),
 							Resources: corev1.ResourceRequirements{
 								Limits:   r.pandaCluster.Spec.Resources.Limits,
 								Requests: r.pandaCluster.Spec.Resources.Requests,
@@ -397,17 +422,43 @@ func (r *StatefulSetResource) Kind() string {
 }
 
 func (r *StatefulSetResource) portsConfiguration() string {
-	kafkaAPIPort := r.pandaCluster.Spec.Configuration.KafkaAPI.Port
 	rpcAPIPort := r.pandaCluster.Spec.Configuration.RPCServer.Port
 	svcName := r.serviceName
 
 	// In every dns name there is trailing dot to query absolute path
 	// For trailing dot explanation please visit http://www.dns-sd.org/trailingdotsindomainnames.html
-	return fmt.Sprintf("--advertise-kafka-addr=internal://$(POD_NAME).%s.$(POD_NAMESPACE).svc.cluster.local.:%d"+
-		" --kafka-addr=internal://$(POD_IP):%d"+
-		" --advertise-rpc-addr=$(POD_NAME).%s.$(POD_NAMESPACE).svc.cluster.local.:%d"+
-		" --rpc-addr=$(POD_IP):%d",
-		svcName, kafkaAPIPort, kafkaAPIPort, svcName, rpcAPIPort, rpcAPIPort)
+	return fmt.Sprintf("--advertise-rpc-addr=$(POD_NAME).%s.$(POD_NAMESPACE).svc.cluster.local.:%d", svcName, rpcAPIPort)
+}
+
+func (r *StatefulSetResource) getPorts() []corev1.ContainerPort {
+	if r.pandaCluster.Spec.ExternalConnectivity &&
+		len(r.nodePortSvc.Spec.Ports) > 0 {
+		return []corev1.ContainerPort{
+			{
+				Name:          "kafka-internal",
+				ContainerPort: int32(r.pandaCluster.Spec.Configuration.KafkaAPI.Port),
+			},
+			{
+				Name: "kafka-external",
+				// To distinguish external from internal clients the new listener
+				// and port is exposed for Redpanda clients. The port is chosen
+				// arbitrary to the KafkaAPI + 1, because user can not reach this
+				// port. The routing in the Kubernetes will forward all traffic from
+				// HostPort to the ContainerPort.
+				ContainerPort: r.nodePortSvc.Spec.Ports[0].TargetPort.IntVal,
+				// The host port is set to the service node port that doesn't have
+				// any endpoints.
+				HostPort: r.nodePortSvc.Spec.Ports[0].NodePort,
+			},
+		}
+	}
+
+	return []corev1.ContainerPort{
+		{
+			Name:          "kafka",
+			ContainerPort: int32(r.pandaCluster.Spec.Configuration.KafkaAPI.Port),
+		},
+	}
 }
 
 func statefulSetKind() string {

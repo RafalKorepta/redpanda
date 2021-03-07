@@ -12,7 +12,10 @@ package resources
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -31,4 +34,40 @@ type Resource interface {
 
 	// Ensure reconcile only one resource available in Kubernetes API server
 	Ensure(ctx context.Context) error
+}
+
+type internalResource interface {
+	Resource
+	client.Reader
+	client.Writer
+}
+
+func ensure(
+	ctx context.Context,
+	r internalResource,
+	checkObj client.Object,
+	resourceName string,
+	l logr.Logger,
+) (bool, error) {
+	err := r.Get(ctx, r.Key(), checkObj)
+	if err != nil && !errors.IsNotFound(err) {
+		return false, fmt.Errorf("error while fetching %s resource: %w", resourceName, err)
+	}
+
+	if errors.IsNotFound(err) {
+		l.Info(fmt.Sprintf("%s %s does not exist, going to create one", resourceName, r.Key().Name))
+
+		obj, err := r.Obj()
+		if err != nil {
+			return false, fmt.Errorf("unable to construct %s object: %w", resourceName, err)
+		}
+
+		if err := r.Create(ctx, obj); err != nil {
+			return false, fmt.Errorf("unable to create %s resource: %w", resourceName, err)
+		}
+
+		return true, nil
+	}
+
+	return false, nil
 }

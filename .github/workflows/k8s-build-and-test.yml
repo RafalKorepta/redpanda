@@ -15,6 +15,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Increase limits of inotify resources
+      run: |
+        sudo sysctl fs.inotify.max_user_watches=524288
+        sudo sysctl fs.inotify.max_user_instances=512
+        echo 1024000 > /proc/fs/aio-max-nr
+      shell: bash
 
     - name: Check out code
       uses: actions/checkout@v2
@@ -53,6 +59,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Increase limits of inotify resources
+      run: |
+        sudo sysctl fs.inotify.max_user_watches=524288
+        sudo sysctl fs.inotify.max_user_instances=512
+        echo 1024000 > /proc/fs/aio-max-nr
+      shell: bash
 
     - name: Check out code
       uses: actions/checkout@v2

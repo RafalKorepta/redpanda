@@ -1,6 +1,6 @@
 # Redpanda Operator
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 21.3.4](https://img.shields.io/badge/AppVersion-21.3.4-informational?style=flat-square)
 
 ## Installation
 
@@ -54,7 +54,7 @@ Other instruction will be visible after installation.
 | fullnameOverride | string | `""` | Override the fully qualified app name |
 | image.pullPolicy | string | `"IfNotPresent"` | Define the pullPolicy for Redpanda Operator image |
 | image.repository | string | `"vectorized/redpanda-operator"` | Repository that Redpanda Operator image is available |
-| image.tag | string | `"latest"` | Define the Redpanda Operator container tag |
+| image.tag | string | `"v21.3.4"` | Define the Redpanda Operator container tag |
 | imagePullSecrets | list | `[]` | Redpanda Operator container registry pullSecret (ex: specify docker registry credentials) |
 | labels | string | `nil` | Allows to assign labels to the resources created by this helm chart |
 | logLevel | string | `"info"` | Set Redpanda Operator log level (debug, info, error, panic, fatal) |

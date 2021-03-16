@@ -87,3 +87,14 @@ jobs:
       with:
         name: kuttl helm test artifacts
         path: src/go/k8s/tests/_helm_e2e_artifacts
+
+  check-kind-parallel:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Create kind cluster
+      uses: helm/kind-action@v1.0.0
+
+    - name: check-kind
+      run: while true; do kind get clusters; sleep 2; done
+      shell: bash

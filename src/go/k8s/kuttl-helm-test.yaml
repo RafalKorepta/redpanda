@@ -9,6 +9,7 @@ testDirs:
   - ./tests/e2e
   - ./tests/e2e-helm
 kindConfig: ./kind.yaml
+kindContext: helm-e2e
 commands:
   - command: "./hack/install-cert-manager.sh"
   - command: "kubectl apply -k ./config/crd"

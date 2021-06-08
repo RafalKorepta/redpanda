@@ -14,7 +14,7 @@ metadata:
 spec:
   containers:
     - name: redpanda
-      image: "vectorized/redpanda:latest"
+      image: "ivotron/redpanda:slimmer"
   nodeName: kind-worker
   nodeSelector:
     redpanda-node: "true"

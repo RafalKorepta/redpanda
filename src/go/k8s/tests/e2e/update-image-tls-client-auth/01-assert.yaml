@@ -14,7 +14,7 @@ metadata:
 spec:
   containers:
     - name: redpanda
-      image: "vectorized/redpanda:latest"
+      image: "ivotron/redpanda:slimmer"
 status:
   phase: "Running"
 
@@ -27,6 +27,6 @@ metadata:
 spec:
   containers:
     - name: redpanda
-      image: "vectorized/redpanda:latest"
+      image: "ivotron/redpanda:slimmer"
 status:
   phase: "Running"

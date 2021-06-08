@@ -6,9 +6,9 @@ spec:
   template:
     spec:
       initContainers:
-        - image: "vectorized/configurator:latest"
+      - image: "vectorized/configurator:latest"
       containers:
-        - image: "vectorized/redpanda:latest"
+      - image: "ivotron/redpanda:slimmer"
 status:
   readyReplicas: 2
 
@@ -21,10 +21,10 @@ metadata:
 spec:
   initContainers:
     - name: redpanda-configurator
-      image: "vectorized/configurator:latest" 
+      image: "vectorized/configurator:latest"
   containers:
     - name: redpanda
-      image: "vectorized/redpanda:latest"
+      image: "ivotron/redpanda:slimmer"
 status:
   phase: "Running"
 
@@ -37,6 +37,6 @@ metadata:
 spec:
   containers:
     - name: redpanda
-      image: "vectorized/redpanda:latest"
+      image: "ivotron/redpanda:slimmer"
 status:
   phase: "Running"

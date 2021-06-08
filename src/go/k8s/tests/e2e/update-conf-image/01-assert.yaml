@@ -8,6 +8,6 @@ spec:
       initContainers:
         - image: "vectorized/configurator:v21.4.11"
       containers:
-        - image: "vectorized/redpanda:latest"
+      - image: "ivotron/redpanda:slimmer"
 status:
   readyReplicas: 2
